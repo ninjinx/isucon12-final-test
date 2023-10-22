@@ -443,11 +443,6 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		return nil, err
 	}
 
-	obtainPresents := make([]*UserPresent, 0)
-	if len(normalPresents) == 0 {
-		return obtainPresents, nil
-	}
-
 	npIds := make([]string, len(normalPresents))
 	for i, np := range normalPresents {
 		npIds[i] = fmt.Sprint(np.ID)
@@ -465,6 +460,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		receivedStatus[received.PresentAllID] = true
 	}
 
+	obtainPresents := make([]*UserPresent, 0)
 	for _, np := range normalPresents {
 		// 既に所持していればスキップ
 		if receivedStatus[np.ID] {
