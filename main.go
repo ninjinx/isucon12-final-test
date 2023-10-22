@@ -453,9 +453,9 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		npIds[i] = fmt.Sprint(np.ID)
 	}
 
-	receivedArray := []UserPresentAllReceivedHistory{}
+	receivedArray := make([]*UserPresentAllReceivedHistory, 0)
 	query = "SELECT * FROM user_present_all_received_history WHERE user_id=? AND present_all_id in (" + strings.Join(npIds, ",") + ")"
-	err := tx.Select(receivedArray, query, userID)
+	err := tx.Select(&receivedArray, query, userID)
 	if err != sql.ErrNoRows {
 		return nil, err
 	}
