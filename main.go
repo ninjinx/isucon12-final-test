@@ -455,9 +455,9 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		return nil, err
 	}
 
-	receivedStatus := make(map[int64]bool, len(receivedArray))
+	receivedStatus := make(map[int64]int, len(receivedArray))
 	for _, received := range receivedArray {
-		receivedStatus[received.PresentAllID] = true
+		receivedStatus[received.PresentAllID] = 1
 	}
 
 	obtainPresents := make([]*UserPresent, 0)
@@ -471,7 +471,6 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		if err != nil {
 			return nil, err
 		}
-		return nil, errors.New(fmt.Sprint(pID))
 		up := &UserPresent{
 			ID:             pID,
 			UserID:         userID,
