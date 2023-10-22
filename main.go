@@ -457,7 +457,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64, c ec
 
 	receivedStatus := make(map[int64]int, len(receivedArray))
 	for _, received := range receivedArray {
-		c.Logger().Info("received_id:" + fmt.Sprint(received.PresentAllID))
+		// c.Logger().Info("received_id:" + fmt.Sprint(received.PresentAllID))
 		receivedStatus[received.PresentAllID] = 1
 	}
 
@@ -465,7 +465,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64, c ec
 	for _, np := range normalPresents {
 		// 既に所持していればスキップ
 		if _, ok := receivedStatus[np.ID]; ok {
-			c.Logger().Info("np_id:" + fmt.Sprint(np.ID))
+			// c.Logger().Info("np_id:" + fmt.Sprint(np.ID))
 			continue
 		}
 
