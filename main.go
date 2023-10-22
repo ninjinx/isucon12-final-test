@@ -305,7 +305,7 @@ func getRequestTime(c echo.Context) (int64, error) {
 }
 
 // loginProcess ログイン処理
-func (h *Handler) loginProcess(tx *sqlx.Tx, userID int64, requestAt int64) (*User, []*UserLoginBonus, []*UserPresent, error) {
+func (h *Handler) loginProcess(tx *sqlx.Tx, userID int64, requestAt int64, c echo.Context) (*User, []*UserLoginBonus, []*UserPresent, error) {
 	user := new(User)
 	query := "SELECT * FROM users WHERE id=?"
 	if err := tx.Get(user, query, userID); err != nil {
@@ -322,7 +322,7 @@ func (h *Handler) loginProcess(tx *sqlx.Tx, userID int64, requestAt int64) (*Use
 	}
 
 	// 全員プレゼント取得
-	allPresents, err := h.obtainPresent(tx, userID, requestAt)
+	allPresents, err := h.obtainPresent(tx, userID, requestAt, c)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -436,7 +436,7 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 }
 
 // obtainPresent プレゼント付与
-func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*UserPresent, error) {
+func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64, c echo.Context) ([]*UserPresent, error) {
 	normalPresents := make([]*PresentAllMaster, 0)
 	query := "SELECT * FROM present_all_masters WHERE registered_start_at <= ? AND registered_end_at >= ?"
 	if err := tx.Select(&normalPresents, query, requestAt, requestAt); err != nil {
@@ -457,6 +457,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 
 	receivedStatus := make(map[int64]int, len(receivedArray))
 	for _, received := range receivedArray {
+		c.Logger().Info("received_id:" + fmt.Sprint(received.PresentAllID))
 		receivedStatus[received.PresentAllID] = 1
 	}
 
@@ -464,6 +465,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 	for _, np := range normalPresents {
 		// 既に所持していればスキップ
 		if _, ok := receivedStatus[np.ID]; ok {
+			c.Logger().Info("np_id:" + fmt.Sprint(np.ID))
 			continue
 		}
 
@@ -765,7 +767,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	}
 
 	// ログイン処理
-	user, loginBonuses, presents, err := h.loginProcess(tx, user.ID, requestAt)
+	user, loginBonuses, presents, err := h.loginProcess(tx, user.ID, requestAt, c)
 	if err != nil {
 		if err == ErrUserNotFound || err == ErrItemNotFound || err == ErrLoginBonusRewardNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
@@ -916,7 +918,7 @@ func (h *Handler) login(c echo.Context) error {
 		})
 	}
 
-	user, loginBonuses, presents, err := h.loginProcess(tx, req.UserID, requestAt)
+	user, loginBonuses, presents, err := h.loginProcess(tx, req.UserID, requestAt, c)
 	if err != nil {
 		if err == ErrUserNotFound || err == ErrItemNotFound || err == ErrLoginBonusRewardNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
