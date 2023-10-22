@@ -12,9 +12,9 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -48,7 +48,8 @@ const (
 )
 
 type Handler struct {
-	DB *sqlx.DB
+	DB   *sqlx.DB
+	Node *Node
 }
 
 func main() {
@@ -70,9 +71,16 @@ func main() {
 	}
 	defer dbx.Close()
 
+	// ID生成用のnodeを生成
+	node, err := generateNode(1)
+	if err != nil {
+		e.Logger.Fatalf("failed to generate node: %v", err)
+	}
+
 	e.Server.Addr = fmt.Sprintf(":%v", "8080")
 	h := &Handler{
-		DB: dbx,
+		DB:   dbx,
+		Node: node,
 	}
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{}))
@@ -364,7 +372,7 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 			}
 			initBonus = true
 
-			ubID, err := h.generateID()
+			ubID, err := h.Node.generateID()
 			if err != nil {
 				return nil, err
 			}
@@ -461,7 +469,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64, c ec
 			continue
 		}
 
-		pID, err := h.generateID()
+		pID, err := h.Node.generateID()
 		if err != nil {
 			return nil, err
 		}
@@ -481,7 +489,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64, c ec
 			return nil, err
 		}
 
-		phID, err := h.generateID()
+		phID, err := h.Node.generateID()
 		if err != nil {
 			return nil, err
 		}
@@ -546,7 +554,7 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 			return nil, nil, nil, err
 		}
 
-		cID, err := h.generateID()
+		cID, err := h.Node.generateID()
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -586,7 +594,7 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 		}
 
 		if uitem == nil {
-			uitemID, err := h.generateID()
+			uitemID, err := h.Node.generateID()
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -671,7 +679,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	defer tx.Rollback() //nolint:errcheck
 
 	// ユーザ作成
-	uID, err := h.generateID()
+	uID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -689,7 +697,7 @@ func (h *Handler) createUser(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	udID, err := h.generateID()
+	udID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -719,7 +727,7 @@ func (h *Handler) createUser(c echo.Context) error {
 
 	initCards := make([]*UserCard, 0, 3)
 	for i := 0; i < 3; i++ {
-		cID, err := h.generateID()
+		cID, err := h.Node.generateID()
 		if err != nil {
 			return errorResponse(c, http.StatusInternalServerError, err)
 		}
@@ -740,7 +748,7 @@ func (h *Handler) createUser(c echo.Context) error {
 		initCards = append(initCards, card)
 	}
 
-	deckID, err := h.generateID()
+	deckID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -771,7 +779,7 @@ func (h *Handler) createUser(c echo.Context) error {
 	}
 
 	// セッション発行
-	sID, err := h.generateID()
+	sID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -867,7 +875,7 @@ func (h *Handler) login(c echo.Context) error {
 	if _, err = tx.Exec(query, requestAt, req.UserID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
-	sID, err := h.generateID()
+	sID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -994,7 +1002,7 @@ func (h *Handler) listGacha(c echo.Context) error {
 	if _, err = h.DB.Exec(query, requestAt, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
-	tID, err := h.generateID()
+	tID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1143,7 +1151,7 @@ func (h *Handler) drawGacha(c echo.Context) error {
 	// プレゼントにガチャ結果を付与する
 	presents := make([]*UserPresent, 0, gachaCount)
 	for _, v := range result {
-		pID, err := h.generateID()
+		pID, err := h.Node.generateID()
 		if err != nil {
 			return errorResponse(c, http.StatusInternalServerError, err)
 		}
@@ -1377,7 +1385,7 @@ func (h *Handler) listItem(c echo.Context) error {
 	if _, err = h.DB.Exec(query, requestAt, userID); err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
-	tID, err := h.generateID()
+	tID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1656,7 +1664,7 @@ func (h *Handler) updateDeck(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	udID, err := h.generateID()
+	udID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -1866,27 +1874,85 @@ func noContentResponse(c echo.Context, status int) error {
 	return c.NoContent(status)
 }
 
-// generateID ユニークなIDを生成する
-func (h *Handler) generateID() (int64, error) {
-	var updateErr error
-	for i := 0; i < 100; i++ {
-		res, err := h.DB.Exec("UPDATE id_generator SET id=LAST_INSERT_ID(id+1)")
-		if err != nil {
-			if merr, ok := err.(*mysql.MySQLError); ok && merr.Number == 1213 {
-				updateErr = err
-				continue
-			}
-			return 0, err
-		}
+// ID生成用の変数
+var (
+	// Epoch is set to the twitter snowflake epoch of Nov 04 2010 01:42:54 UTC in milliseconds
+	// You may customize this to set a different epoch for your application.
+	Epoch int64 = 1697976699794
 
-		id, err := res.LastInsertId()
-		if err != nil {
-			return 0, err
-		}
-		return id, nil
+	// NodeBits holds the number of bits to use for Node
+	// Remember, you have a total 22 bits to share between Node/Step
+	NodeBits uint8 = 2
+
+	// StepBits holds the number of bits to use for Step
+	// Remember, you have a total 22 bits to share between Node/Step
+	StepBits uint8 = 20
+)
+
+// A Node struct holds the basic information needed for a snowflake generator
+// node
+type Node struct {
+	mu    sync.Mutex
+	epoch time.Time
+	time  int64
+	node  int64
+	step  int64
+
+	nodeMax   int64
+	nodeMask  int64
+	stepMask  int64
+	timeShift uint8
+	nodeShift uint8
+}
+
+// generateNode ユニークなIDを生成するNodeを生成する
+func generateNode(node int64) (*Node, error) {
+	if NodeBits+StepBits > 22 {
+		return nil, errors.New("Remember, you have a total 22 bits to share between Node/Step")
 	}
 
-	return 0, fmt.Errorf("failed to generate id: %w", updateErr)
+	// Nodeの生成
+	n := Node{}
+	n.node = node
+	n.nodeMax = -1 ^ (-1 << NodeBits)
+	n.nodeMask = n.nodeMax << StepBits
+	n.stepMask = -1 ^ (-1 << StepBits)
+	n.timeShift = NodeBits + StepBits
+	n.nodeShift = StepBits
+
+	if n.node < 0 || n.node > n.nodeMax {
+		return nil, errors.New("Node number must be between 0 and " + strconv.FormatInt(n.nodeMax, 10))
+	}
+
+	var curTime = time.Now()
+	// add time.Duration to curTime to make sure we use the monotonic clock if available
+	n.epoch = curTime.Add(time.Unix(Epoch/1000, (Epoch%1000)*1000000).Sub(curTime))
+
+	return &n, nil
+}
+
+// generateID ユニークなIDを生成する
+func (n *Node) generateID() (int64, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	now := time.Since(n.epoch).Milliseconds()
+
+	if now == n.time {
+		n.step = (n.step + 1) & n.stepMask
+
+		if n.step == 0 {
+			for now <= n.time {
+				now = time.Since(n.epoch).Milliseconds()
+			}
+		}
+	} else {
+		n.step = 0
+	}
+
+	n.time = now
+
+	return (now)<<n.timeShift | (n.node << n.nodeShift) | (n.step), nil
 }
 
 // generateUUID UUIDの生成
