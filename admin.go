@@ -92,7 +92,7 @@ func (h *Handler) adminLogin(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	sID, err := h.generateID()
+	sID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -622,7 +622,7 @@ func (h *Handler) adminBanUser(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	banID, err := h.generateID()
+	banID, err := h.Node.generateID()
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, err)
 	}
@@ -641,6 +641,7 @@ type AdminBanUserResponse struct {
 }
 
 // hashPassword パスワードをハッシュ化する
+//
 //nolint:deadcode,unused
 func hashPassword(pw string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
