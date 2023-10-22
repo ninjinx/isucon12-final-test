@@ -471,6 +471,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		if err != nil {
 			return nil, err
 		}
+		return nil, errors.New(fmt.Sprint(pID))
 		up := &UserPresent{
 			ID:             pID,
 			UserID:         userID,
