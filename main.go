@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -441,17 +442,28 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64) ([]*
 		return nil, err
 	}
 
+	npIds := make([]string, len(normalPresents))
+	for i, np := range normalPresents {
+		npIds[i] = fmt.Sprint(np.ID)
+	}
+
+	receivedArray := []UserPresentAllReceivedHistory{}
+	query = "SELECT * FROM user_present_all_received_history WHERE user_id=? AND present_all_id=(" + strings.Join(npIds, ",") + ")"
+	err := tx.Select(receivedArray, query, userID)
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	receivedStatus := make(map[int64]bool, len(receivedArray))
+	for _, received := range receivedArray {
+		receivedStatus[received.PresentAllID] = true
+	}
+
 	obtainPresents := make([]*UserPresent, 0)
 	for _, np := range normalPresents {
-		received := new(UserPresentAllReceivedHistory)
-		query = "SELECT * FROM user_present_all_received_history WHERE user_id=? AND present_all_id=?"
-		err := tx.Get(received, query, userID, np.ID)
-		if err == nil {
-			// プレゼント配布済
+		// 既に所持していればスキップ
+		if receivedStatus[np.ID] {
 			continue
-		}
-		if err != sql.ErrNoRows {
-			return nil, err
 		}
 
 		pID, err := h.Node.generateID()
