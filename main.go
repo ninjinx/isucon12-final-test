@@ -523,6 +523,7 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64, c ec
 // obtainItem アイテム付与処理
 func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, obtainAmount int64, requestAt int64) ([]int64, []*UserCard, []*UserItem, error) {
 	obtainCoins := make([]int64, 0)
+	insertCards := make([]UserCard, 0)
 	obtainCards := make([]*UserCard, 0)
 	obtainItems := make([]*UserItem, 0)
 
@@ -570,6 +571,8 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 		}
 
 		// insertは後処理でやる
+		insertCards = append(insertCards, *card)
+
 		obtainCards = append(obtainCards, card)
 
 	case 3, 4: // 強化素材
@@ -626,9 +629,9 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 	}
 
 	// カードがあればバルクインサート
-	if len(obtainCards) != 0 {
+	if len(insertCards) != 0 {
 		query := "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (:ID, :UserID, :CardID, :AmountPerSec, :Level, :TotalExp, :CreatedAt, :UpdatedAt)"
-		if _, err := tx.Exec(query, obtainCards); err != nil {
+		if _, err := tx.Exec(query, insertCards); err != nil {
 			return nil, nil, nil, err
 		}
 	}
