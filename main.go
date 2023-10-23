@@ -316,7 +316,7 @@ func (h *Handler) loginProcess(tx *sqlx.Tx, userID int64, requestAt int64, c ech
 	}
 
 	// ログインボーナス処理
-	loginBonuses, err := h.obtainLoginBonus(tx, userID, requestAt)
+	loginBonuses, err := h.obtainLoginBonus(tx, userID, requestAt, c)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -353,7 +353,7 @@ func isCompleteTodayLogin(lastActivatedAt, requestAt time.Time) bool {
 }
 
 // obtainLoginBonus ログインボーナス付与
-func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) ([]*UserLoginBonus, error) {
+func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64, c echo.Context) ([]*UserLoginBonus, error) {
 	loginBonuses := make([]*LoginBonusMaster, 0)
 	query := "SELECT * FROM login_bonus_masters WHERE start_at <= ? AND end_at >= ?"
 	if err := tx.Select(&loginBonuses, query, requestAt, requestAt); err != nil {
@@ -433,7 +433,7 @@ func (h *Handler) obtainLoginBonus(tx *sqlx.Tx, userID int64, requestAt int64) (
 
 	// バルクで付与
 	if len(addItems) != 0 {
-		_, _, _, err := h.obtainItems(tx, userID, addItems, requestAt)
+		_, _, _, err := h.obtainItems(tx, userID, addItems, requestAt, c)
 		if err != nil {
 			return nil, err
 		}
@@ -527,122 +527,6 @@ func (h *Handler) obtainPresent(tx *sqlx.Tx, userID int64, requestAt int64, c ec
 	return obtainPresents, nil
 }
 
-// obtainItem アイテム付与処理
-func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, obtainAmount int64, requestAt int64) ([]int64, []*UserCard, []*UserItem, error) {
-	obtainCoins := make([]int64, 0)
-	obtainCards := make([]*UserCard, 0)
-	obtainItems := make([]*UserItem, 0)
-
-	switch itemType {
-	case 1: // coin
-		user := new(User)
-		query := "SELECT * FROM users WHERE id=?"
-		if err := tx.Get(user, query, userID); err != nil {
-			if err == sql.ErrNoRows {
-				return nil, nil, nil, ErrUserNotFound
-			}
-			return nil, nil, nil, err
-		}
-
-		query = "UPDATE users SET isu_coin=? WHERE id=?"
-		totalCoin := user.IsuCoin + obtainAmount
-		if _, err := tx.Exec(query, totalCoin, user.ID); err != nil {
-			return nil, nil, nil, err
-		}
-		obtainCoins = append(obtainCoins, obtainAmount)
-
-	case 2: // card(ハンマー)
-		query := "SELECT * FROM item_masters WHERE id=? AND item_type=?"
-		item := new(ItemMaster)
-		if err := tx.Get(item, query, itemID, itemType); err != nil {
-			if err == sql.ErrNoRows {
-				return nil, nil, nil, ErrItemNotFound
-			}
-			return nil, nil, nil, err
-		}
-
-		cID, err := h.Node.generateID()
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		card := &UserCard{
-			ID:           cID,
-			UserID:       userID,
-			CardID:       item.ID,
-			AmountPerSec: *item.AmountPerSec,
-			Level:        1,
-			TotalExp:     0,
-			CreatedAt:    requestAt,
-			UpdatedAt:    requestAt,
-		}
-
-		// insertは後処理でやる
-		obtainCards = append(obtainCards, card)
-
-	case 3, 4: // 強化素材
-		query := "SELECT * FROM item_masters WHERE id=? AND item_type=?"
-		item := new(ItemMaster)
-		if err := tx.Get(item, query, itemID, itemType); err != nil {
-			if err == sql.ErrNoRows {
-				return nil, nil, nil, ErrItemNotFound
-			}
-			return nil, nil, nil, err
-		}
-
-		query = "SELECT * FROM user_items WHERE user_id=? AND item_id=?"
-		uitem := new(UserItem)
-		if err := tx.Get(uitem, query, userID, item.ID); err != nil {
-			if err != sql.ErrNoRows {
-				return nil, nil, nil, err
-			}
-			uitem = nil
-		}
-
-		if uitem == nil {
-			uitemID, err := h.Node.generateID()
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			uitem = &UserItem{
-				ID:        uitemID,
-				UserID:    userID,
-				ItemType:  item.ItemType,
-				ItemID:    item.ID,
-				Amount:    int(obtainAmount),
-				CreatedAt: requestAt,
-				UpdatedAt: requestAt,
-			}
-			query = "INSERT INTO user_items(id, user_id, item_id, item_type, amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-			if _, err := tx.Exec(query, uitem.ID, userID, uitem.ItemID, uitem.ItemType, uitem.Amount, requestAt, requestAt); err != nil {
-				return nil, nil, nil, err
-			}
-
-		} else {
-			uitem.Amount += int(obtainAmount)
-			uitem.UpdatedAt = requestAt
-			query = "UPDATE user_items SET amount=?, updated_at=? WHERE id=?"
-			if _, err := tx.Exec(query, uitem.Amount, uitem.UpdatedAt, uitem.ID); err != nil {
-				return nil, nil, nil, err
-			}
-		}
-
-		obtainItems = append(obtainItems, uitem)
-
-	default:
-		return nil, nil, nil, ErrInvalidItemType
-	}
-
-	// カードがあればバルクインサート
-	if len(obtainCards) != 0 {
-		query := "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (:id, :user_id, :card_id, :amount_per_sec, :level, :total_exp, :created_at, :updated_at)"
-		if _, err := tx.NamedExec(query, obtainCards); err != nil {
-			return nil, nil, nil, err
-		}
-	}
-
-	return obtainCoins, obtainCards, obtainItems, nil
-}
-
 type AddItem struct {
 	ItemID   int64
 	ItemType int
@@ -650,7 +534,7 @@ type AddItem struct {
 }
 
 // obtainItem アイテム付与処理
-func (h *Handler) obtainItems(tx *sqlx.Tx, userID int64, addItems []AddItem, requestAt int64) ([]int64, []*UserCard, []*UserItem, error) {
+func (h *Handler) obtainItems(tx *sqlx.Tx, userID int64, addItems []AddItem, requestAt int64, c echo.Context) ([]int64, []*UserCard, []*UserItem, error) {
 	obtainCoins := make([]int64, 0)
 	obtainCards := make([]*UserCard, 0)
 	obtainItems := make([]*UserItem, 0)
@@ -761,6 +645,7 @@ func (h *Handler) obtainItems(tx *sqlx.Tx, userID int64, addItems []AddItem, req
 
 	// カードがあればバルクインサート
 	if len(obtainCards) != 0 {
+		c.Logger().Info(fmt.Sprint(len(obtainCards)))
 		query := "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (:id, :user_id, :card_id, :amount_per_sec, :level, :total_exp, :created_at, :updated_at)"
 		if _, err := tx.NamedExec(query, obtainCards); err != nil {
 			return nil, nil, nil, err
@@ -1460,7 +1345,7 @@ func (h *Handler) receivePresent(c echo.Context) error {
 		addItems = append(addItems, AddItem{ItemID: v.ItemID, ItemType: v.ItemType, Amount: int64(v.Amount)})
 
 	}
-	_, _, _, err = h.obtainItems(tx, userID, addItems, requestAt)
+	_, _, _, err = h.obtainItems(tx, userID, addItems, requestAt, c)
 	if err != nil {
 		if err == ErrUserNotFound || err == ErrItemNotFound {
 			return errorResponse(c, http.StatusNotFound, err)
