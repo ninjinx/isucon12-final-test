@@ -568,10 +568,8 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 			CreatedAt:    requestAt,
 			UpdatedAt:    requestAt,
 		}
-		query = "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-		if _, err := tx.Exec(query, card.ID, card.UserID, card.CardID, card.AmountPerSec, card.Level, card.TotalExp, card.CreatedAt, card.UpdatedAt); err != nil {
-			return nil, nil, nil, err
-		}
+
+		// insertは後処理でやる
 		obtainCards = append(obtainCards, card)
 
 	case 3, 4: // 強化素材
@@ -625,6 +623,14 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 
 	default:
 		return nil, nil, nil, ErrInvalidItemType
+	}
+
+	// カードがあればバルクインサート
+	if len(obtainCards) != 0 {
+		query := "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (:ID, :UserID, :CardID, :AmountPerSec, :Level, :TotalExp, :CreatedAt, :UpdatedAt)"
+		if _, err := tx.Exec(query, obtainCards); err != nil {
+			return nil, nil, nil, err
+		}
 	}
 
 	return obtainCoins, obtainCards, obtainItems, nil
