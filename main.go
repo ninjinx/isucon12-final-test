@@ -630,7 +630,7 @@ func (h *Handler) obtainItem(tx *sqlx.Tx, userID, itemID int64, itemType int, ob
 
 	// カードがあればバルクインサート
 	if len(insertCards) != 0 {
-		query := "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (:ID, :UserID, :CardID, :AmountPerSec, :Level, :TotalExp, :CreatedAt, :UpdatedAt)"
+		query := "INSERT INTO user_cards(id, user_id, card_id, amount_per_sec, level, total_exp, created_at, updated_at) VALUES (:id, :user_id, :card_id, :amount_per_sec, :level, :total_exp, :created_at, :updated_at)"
 		if _, err := tx.NamedExec(query, insertCards); err != nil {
 			return nil, nil, nil, err
 		}
