@@ -643,6 +643,8 @@ func (h *Handler) obtainItems(tx *sqlx.Tx, userID int64, addItems []AddItem, req
 		}
 	}
 
+	return nil, nil, nil, ErrInvalidItemType
+
 	// カードがあればバルクインサート
 	if len(obtainCards) != 0 {
 		c.Logger().Info(fmt.Sprint(len(obtainCards)))
